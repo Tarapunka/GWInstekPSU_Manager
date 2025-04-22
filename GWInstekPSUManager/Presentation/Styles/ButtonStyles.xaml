@@ -1,0 +1,63 @@
+﻿<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <!-- Базовый стиль для кнопок -->
+    <Style x:Key="LoadModeButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="LightGray" />
+        <!-- Цвет по умолчанию -->
+        <Setter Property="Foreground" Value="Black" />
+        <Setter Property="Padding" Value="10,5" />
+        <Setter Property="Margin" Value="2" />
+    </Style>
+
+    <!-- Стиль для кнопки CC -->
+    <Style x:Key="CCButtonStyle" BasedOn="{StaticResource LoadModeButtonStyle}" TargetType="Button">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding SelectedChannel.IsCCModeOn}" Value="True">
+                <Setter Property="Background" Value="#00FF00" />
+                <!-- Активный режим -->
+                <Setter Property="Foreground" Value="White" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Стиль для кнопки CV -->
+    <Style x:Key="CVButtonStyle" BasedOn="{StaticResource LoadModeButtonStyle}" TargetType="Button">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding SelectedChannel.IsCVModeOn}" Value="True">
+                <Setter Property="Background" Value="#00FF00" />
+                <Setter Property="Foreground" Value="White" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Стиль для кнопки CR -->
+    <Style x:Key="CRButtonStyle" BasedOn="{StaticResource LoadModeButtonStyle}" TargetType="Button">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding SelectedChannel.IsCRModeOn}" Value="True">
+                <Setter Property="Background" Value="#00FF00" />
+                <Setter Property="Foreground" Value="White" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Стиль для кнопки SER -->
+    <Style x:Key="SERButtonStyle" BasedOn="{StaticResource LoadModeButtonStyle}" TargetType="Button">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding SelectedChannel.IsSeriesOn}" Value="True">
+                <Setter Property="Background" Value="#fcb838" />
+                <Setter Property="Foreground" Value="White" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- Стиль для кнопки PAR -->
+    <Style x:Key="PARButtonStyle" BasedOn="{StaticResource LoadModeButtonStyle}" TargetType="Button">
+        <Style.Triggers>
+            <DataTrigger Binding="{Binding SelectedChannel.IsParallelOn}" Value="True">
+                <Setter Property="Background" Value="#fcb838" />
+                <Setter Property="Foreground" Value="White" />
+            </DataTrigger>
+        </Style.Triggers>
+    </Style>
+
+</ResourceDictionary>

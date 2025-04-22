@@ -1,0 +1,40 @@
+﻿<Application x:Class="GWInstekPSUManager.App"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:local="clr-namespace:GWInstekPSUManager"
+             xmlns:viewmodels="clr-namespace:GWInstekPSUManager.ViewModels"
+             xmlns:views="clr-namespace:GWInstekPSUManager.Views"
+             xmlns:converters="clr-namespace:GWInstekPSUManager.Presentation.Converters"
+             xmlns:system="clr-namespace:System;assembly=mscorlib">
+    <!-- Добавлено для system:Double -->
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <!-- Конвертеры -->
+            <!--<converters:BoolToStatusConverter x:Key="BoolToStatusConverter"/>
+            <converters:BoolToColorConverter x:Key="BoolToColorConverter"/>
+            <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+            <converters:NullToVisibilityConverter x:Key="EnumToVisibilityConverter"/>-->
+            <converters:DecimalToDoubleConverter x:Key="DecimalToDoubleConverter"/>
+            <converters:BoolToBorderBrushConverter x:Key="BoolToBorderBrushConverter"/>
+
+
+            <!-- Ресурсы шрифтов -->
+            <system:Double x:Key="TitleFontSize">20</system:Double>
+            <system:Double x:Key="SubtitleFontSize">14</system:Double>
+            <system:Double x:Key="ValueFontSize">20</system:Double>
+            <system:Double x:Key="UnitFontSize">14</system:Double>
+            <system:Double x:Key="NormalFontSize">12</system:Double>
+
+            <!-- DataTemplates -->
+            <!--<DataTemplate DataType="{x:Type viewmodels:DeviceViewModel}">
+                <views:DeviceView/>
+            </DataTemplate>-->
+
+            <ResourceDictionary.MergedDictionaries>
+                <ResourceDictionary Source="Presentation/Styles/ButtonStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

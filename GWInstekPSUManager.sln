@@ -1,0 +1,34 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.12.35707.178 d17.12
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GWInstekPSUManager", "GWInstekPSUManager\GWInstekPSUManager.csproj", "{ED334FCD-489F-4FA9-89CB-E0C4A7DAE8F0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GWInstekPSUManager.Core", "GWInstekPSUManager.Core\GWInstekPSUManager.Core.csproj", "{824FBA52-F6B5-4EA1-A827-738EB2E39F12}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GWInstekPSUManager.Infrastructure", "GWInstekPSUManager.Infrastructure\GWInstekPSUManager.Infrastructure.csproj", "{E3674E0D-040A-44AE-92CE-3F94C975AA65}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{ED334FCD-489F-4FA9-89CB-E0C4A7DAE8F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ED334FCD-489F-4FA9-89CB-E0C4A7DAE8F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ED334FCD-489F-4FA9-89CB-E0C4A7DAE8F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ED334FCD-489F-4FA9-89CB-E0C4A7DAE8F0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{824FBA52-F6B5-4EA1-A827-738EB2E39F12}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{824FBA52-F6B5-4EA1-A827-738EB2E39F12}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{824FBA52-F6B5-4EA1-A827-738EB2E39F12}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{824FBA52-F6B5-4EA1-A827-738EB2E39F12}.Release|Any CPU.Build.0 = Release|Any CPU
+		{E3674E0D-040A-44AE-92CE-3F94C975AA65}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{E3674E0D-040A-44AE-92CE-3F94C975AA65}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{E3674E0D-040A-44AE-92CE-3F94C975AA65}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{E3674E0D-040A-44AE-92CE-3F94C975AA65}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
