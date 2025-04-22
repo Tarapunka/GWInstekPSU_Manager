@@ -19,7 +19,7 @@ namespace GWInstekPSUManager.Infrastructure.Services.DeviceServices
         public bool IsConnected => _connection.IsConnected;
         public string DeviceModel { get; private set; }
 
-        public IConnectionService Connection { get=> _connection; }
+        public IConnectionService Connection { get => _connection; }
 
         public event EventHandler<string> DataReceived;
         public event EventHandler<DeviceStatusEventArgs> StatusChanged;
@@ -59,7 +59,14 @@ namespace GWInstekPSUManager.Infrastructure.Services.DeviceServices
 
         public async Task<(IPowerSupplyChannel newChannel, string LoadState)> InitializeChannelsAsync(int channel)
         {
-            return await _channelController.InitializeChannelsAsync(channel);
+            try
+            {
+                return await _channelController.InitializeChannelsAsync(channel);
+            }
+            catch
+            {
+                throw new Exception($"the device does not support the channel number {channel}");
+            }
         }
 
 
@@ -136,7 +143,7 @@ namespace GWInstekPSUManager.Infrastructure.Services.DeviceServices
 
         public async Task SetVsetAsync(int channel, double vset)
         {
-            await ExecuteSafeAsync(() => _channelController.SetVoltageAsync(channel,vset),
+            await ExecuteSafeAsync(() => _channelController.SetVoltageAsync(channel, vset),
                 $"Set Vset {vset} V to CH{channel}");
         }
 
@@ -191,7 +198,7 @@ namespace GWInstekPSUManager.Infrastructure.Services.DeviceServices
         {
             return await ExecuteSafeAsync(async () =>
             {
-               return await _channelController.SwitchOCPModeAsync(channel);
+                return await _channelController.SwitchOCPModeAsync(channel);
             },
                 $"Toggle OCP on CH{channel}");
         }
@@ -220,7 +227,7 @@ namespace GWInstekPSUManager.Infrastructure.Services.DeviceServices
         {
             return await ExecuteSafeAsync(async () =>
             {
-               return await _channelController.SetChannelLoadModeAsync(channel, mode);
+                return await _channelController.SetChannelLoadModeAsync(channel, mode);
             },
                 $"Set {mode} mode on CH{channel}");
         }
@@ -237,7 +244,7 @@ namespace GWInstekPSUManager.Infrastructure.Services.DeviceServices
         {
             return await ExecuteSafeAsync(async () =>
             {
-                
+
                 var mode = await _connection.SendQueryAsync(_protocol.Query.GetModeStatus(channel)); // Запрос на текущий режим канала
                 bool status = mode == "PAR"; // Сравниваем и создаем булевое значение
                 var command = _protocol.Build.SetParallelMode(channel, !status); // Получаем строку комманды на переключение режима
@@ -250,7 +257,7 @@ namespace GWInstekPSUManager.Infrastructure.Services.DeviceServices
 
         public async Task<bool> SetSeriesModeAsync(int channel)
         {
-            return await ExecuteSafeAsync( async () =>
+            return await ExecuteSafeAsync(async () =>
             {
                 var mode = await _connection.SendQueryAsync(_protocol.Query.GetModeStatus(channel)); // Запрос на текущий режим канала
                 bool status = mode == "SER"; // Сравниваем и создаем булевое значение
