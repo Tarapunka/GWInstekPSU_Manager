@@ -17,6 +17,10 @@ public partial class PowerSupplyChannel : IPowerSupplyChannel
     private double _ocp;
     private double _currentLimit;
     private double _voltageLimit;
+    private double _groupVset;
+    private double _groupIset;
+    private double _groupVoltageLimit;
+    private double _groupCurrentLimit;
     private string _mode = "CC";
     private DateTime _startTime = DateTime.Now;
     private bool _isEnabled = false;
@@ -39,7 +43,7 @@ public partial class PowerSupplyChannel : IPowerSupplyChannel
     public event PropertyChangedEventHandler? PropertyChanged;
     public event NotifyCollectionChangedEventHandler? CollectionChanged;
 
-
+    public string DeviceName { get; set; }
     public int ChannelNumber { get; set; }
 
     public double Voltage
@@ -145,6 +149,45 @@ public partial class PowerSupplyChannel : IPowerSupplyChannel
             SetField(ref _voltageLimit, value, nameof(VoltageLimit));
         }
     }
+
+    public double GroupVoltageLimit
+    {
+        get => _groupVoltageLimit;
+        set
+        {
+            SetField(ref _groupVoltageLimit, value, nameof(GroupVoltageLimit));
+        }
+    }
+
+    public double GroupCurrentLimit
+    {
+        get => _groupCurrentLimit;
+        set
+        {
+            SetField(ref _groupCurrentLimit, value, nameof(GroupCurrentLimit));
+        }
+    }
+    public double GroupActualVoltage 
+    {
+        get => _groupVset;
+        set
+        {
+            SetField(ref _groupVset, value, nameof(GroupActualVoltage ));
+            OnPropertyChanged(nameof(GroupActualVoltage ));
+        }
+    }
+    public double GroupActualCurrent 
+    {
+        get => _groupIset;
+        set
+        {
+            SetField(ref _groupIset, value, nameof(GroupActualCurrent ));
+            OnPropertyChanged(nameof(GroupActualCurrent ));
+        }
+    }
+
+
+
 
     public string Mode
     {

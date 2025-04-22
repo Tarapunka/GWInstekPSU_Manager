@@ -2,6 +2,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Linq;
+using System.Security.AccessControl;
 using System.Threading;
 using System.Threading.Tasks;
 using GWInstekPSUManager.Core.Events;
@@ -86,13 +87,11 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
             var masterContext = _activePolls[masterChannelNumber];
             var masterChannel = masterContext.Channel;
 
-            // Находим все каналы в той же группе (Series/Parallel)
             var groupChannels = _activePolls
                 .Where(x => x.Value.Channel.IsSeriesOn == masterChannel.IsSeriesOn &&
                            x.Value.Channel.IsParallelOn == masterChannel.IsParallelOn)
                 .ToList();
 
-            // Сначала собираем все измерения
             var measurements = new ConcurrentDictionary<int, MeasureResponse>();
             await Task.WhenAll(groupChannels.Select(async channel =>
             {
@@ -106,7 +105,19 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
                 }
             }));
 
-            // Затем обрабатываем результаты
+            // Рассчитываем суммарные значения для группы
+            double totalCurrent = 0;
+            double totalVoltage = 0;
+            foreach (var channel in groupChannels)
+            {
+                if (measurements.TryGetValue(channel.Key, out var channelMeasurements))
+                {
+                    totalCurrent += channelMeasurements.Current;
+                    totalVoltage += channelMeasurements.Voltage;
+                }
+            }
+
+            // Обрабатываем каждый канал с учетом суммарных значений
             foreach (var channel in groupChannels)
             {
                 if (token.IsCancellationRequested)
@@ -114,6 +125,10 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
 
                 if (measurements.TryGetValue(channel.Key, out var channelMeasurements))
                 {
+                    // Передаем суммарные значения в контекст канала
+                    channel.Value.Channel.GroupActualCurrent = totalCurrent;
+                    channel.Value.Channel.GroupActualVoltage = totalVoltage;
+
                     ProcessChannelMeasurements(
                         channel.Key,
                         channel.Value.Channel,
@@ -121,10 +136,14 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
                         channel.Value.Logger,
                         channel.Value.CapacityCalculator,
                         measurementTime);
+
+                    if (IsGroupLimitExceeded(channel.Value.Channel))
+                    {
+                        ChannelLimitExceeded?.Invoke(channel.Key);
+                    }
                 }
             }
         }
-
         private async Task PollSingleChannel(int channelNumber, ChannelPollingContext context,
                                           Stopwatch sw, DateTime measurementTime, CancellationToken token)
         {
@@ -154,28 +173,29 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
         {
             lock (_syncRoot)
             {
-                // Обновляем состояние канала
                 channel.Voltage = measurements.Voltage;
                 channel.Current = measurements.Current;
                 channel.Power = measurements.Voltage * measurements.Current;
 
-                // Обновляем емкость с использованием точного расчета
                 if (channel.IsEnabled)
                 {
                     channel.Capacity = capacityCalculator.CalculateCapacity(measurements.Current, measurementTime);
                 }
 
-                // Проверка лимитов
-                if (IsLimitExceeded(channel, measurements))
+                // Для группового режима используем новую проверку
+                if ((channel.IsSeriesOn || channel.IsParallelOn) && IsGroupLimitExceeded(channel))
+                {
+                    ChannelLimitExceeded?.Invoke(channelNumber);
+                    return;
+                }
+                // Для одиночного режима - старую проверку
+                else if (!channel.IsSeriesOn && !channel.IsParallelOn && IsLimitExceeded(channel, measurements))
                 {
                     ChannelLimitExceeded?.Invoke(channelNumber);
                     return;
                 }
 
-                // Логирование
                 logger.LogCurrentState();
-
-                // Уведомление UI
                 MeasurementReceived?.Invoke(this, new ChannelMeasurementEventArgs(
                     channelNumber,
                     measurements,
@@ -225,6 +245,23 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
         {
             return (channel.VoltageLimit > 0 && measurements.Voltage >= channel.VoltageLimit) ||
                    (channel.CurrentLimit > 0 && measurements.Current >= channel.CurrentLimit);
+        }
+
+        private bool IsGroupLimitExceeded(IPowerSupplyChannel channel)
+        {
+            // Для последовательного соединения проверяем напряжение
+            if (channel.IsSeriesOn && channel.GroupVoltageLimit > 0)
+            {
+                return channel.GroupActualVoltage >= channel.GroupVoltageLimit;
+            }
+
+            // Для параллельного соединения проверяем ток
+            if (channel.IsParallelOn && channel.GroupCurrentLimit > 0)
+            {
+                return channel.GroupActualCurrent >= channel.GroupCurrentLimit;
+            }
+
+            return false;
         }
 
         private class ChannelPollingContext

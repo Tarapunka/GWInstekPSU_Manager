@@ -5,165 +5,171 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008" 
              xmlns:local="clr-namespace:GWInstekPSUManager.Views"
              xmlns:xctk="http://schemas.xceed.com/wpf/xaml/toolkit"
-             xmlns:vm="clr-namespace:GWInstekPSUManager.ViewModels"
-
              mc:Ignorable="d" 
              d:DesignHeight="450" d:DesignWidth="800">
+
     <Grid>
         <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="Auto"/>
+            <ColumnDefinition Width="250" MinWidth="200"/>
             <ColumnDefinition Width="*"/>
         </Grid.ColumnDefinitions>
 
-        <!-- Список всех каналов -->
-        <StackPanel Grid.Column="0" Orientation="Horizontal">
-            <ListBox ItemsSource="{Binding DeviceViewModels}"
-                     SelectedItem="{Binding SelectedViewModel}">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel>
-                            <TextBlock Text="{Binding DeviceName}"/>
-                            <TextBlock Text="{Binding DeviceService.Connection.ConnectionName}"/>
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+        <!-- Device and Channel Selection -->
+        <Grid Grid.Column="0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
 
-            <ListBox 
-                 ItemsSource="{Binding SelectedViewModel.Channels}"
-                 SelectionMode="Extended"
-                 SelectedItem="{Binding SelectedChannel}">
-                <ListBox.ItemTemplate>
-                    <DataTemplate>
-                        <StackPanel>
-                            <TextBlock Text="{Binding DeviceName}"/>
-                            <TextBlock Text="{Binding ChannelNumber, StringFormat='Канал {0}'}"/>
-                            <TextBlock Text="{Binding IsEnabled, StringFormat='Статус: {0}'}"/>
-                            <StackPanel Orientation="Vertical">
-                                <Button Content="Add" 
-        Command="{Binding DataContext.AddChannelToGroupCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"/>
-                                <Button Content="Remove" 
-        Command="{Binding DataContext.RemoveChannelFromGroupCommand, RelativeSource={RelativeSource AncestorType=ListBox}}"/>
-                            </StackPanel>
-                        </StackPanel>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <!-- Device List -->
+            <GroupBox Grid.Row="0" Header="Devices">
+                <ListBox ItemsSource="{Binding DeviceViewModels}"
+                         SelectedItem="{Binding SelectedViewModel}"
+                         DisplayMemberPath="DeviceName"/>
+            </GroupBox>
 
-        </StackPanel>
+            <!-- Channel List -->
+            <GroupBox Grid.Row="1" Header="Channels">
+                <ListBox ItemsSource="{Binding SelectedViewModel.Channels}"
+                         SelectionMode="Extended"
+                         SelectedItem="{Binding SelectedChannel}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <CheckBox Content="{Binding ChannelNumber, StringFormat='Channel {0}'}"
+                                      IsChecked="{Binding RelativeSource={RelativeSource AncestorType=ListBoxItem}, 
+                                                          Path=IsSelected}"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </GroupBox>
+        </Grid>
 
-        <!-- Панель управления -->
-        <StackPanel Grid.Column="1">
-            <GroupBox Header="Selected Channel Details"
-                          Visibility="{Binding SelectedChannels}">
+        <!-- Channel Management -->
+        <Grid Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Channel Monitoring -->
+            <GroupBox Grid.Row="0" Header="Selected Channels">
                 <ItemsControl ItemsSource="{Binding SelectedChannels}">
                     <ItemsControl.ItemsPanel>
                         <ItemsPanelTemplate>
-                            <!-- UniformGrid автоматически создаёт равные ячейки -->
                             <UniformGrid Rows="2" Columns="2"/>
                         </ItemsPanelTemplate>
                     </ItemsControl.ItemsPanel>
 
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
-                            <!-- Шаблон для каждого элемента (канала) -->
-                            <Border BorderBrush="Gray" BorderThickness="1" Margin="2">
+                            <Border BorderBrush="#DDD" BorderThickness="1" Margin="2">
                                 <local:PowerSupplyChannelView DataContext="{Binding}"/>
                             </Border>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
-
-                    <!-- Заполнитель, если Channels пуст или null -->
-                    <ItemsControl.Style>
-                        <Style TargetType="ItemsControl">
-                            <Style.Triggers>
-                                <Trigger Property="HasItems" Value="False">
-                                    <Setter Property="Template">
-                                        <Setter.Value>
-                                            <ControlTemplate>
-                                                <!-- Пустой Grid с серой сеткой -->
-                                                <Grid>
-                                                    <Grid.RowDefinitions>
-                                                        <RowDefinition Height="*"/>
-                                                        <RowDefinition Height="*"/>
-                                                    </Grid.RowDefinitions>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                    </Grid.ColumnDefinitions>
-
-                                                    <Border Grid.Row="0" Grid.Column="0" BorderBrush="LightGray" BorderThickness="1"/>
-                                                    <Border Grid.Row="0" Grid.Column="1" BorderBrush="LightGray" BorderThickness="1"/>
-                                                    <Border Grid.Row="1" Grid.Column="0" BorderBrush="LightGray" BorderThickness="1"/>
-                                                    <Border Grid.Row="1" Grid.Column="1" BorderBrush="LightGray" BorderThickness="1"/>
-                                                </Grid>
-                                            </ControlTemplate>
-                                        </Setter.Value>
-                                    </Setter>
-                                </Trigger>
-                            </Style.Triggers>
-                        </Style>
-                    </ItemsControl.Style>
                 </ItemsControl>
             </GroupBox>
 
-            <StackPanel>
-                <CheckBox IsChecked="{Binding IsSeriesMode}" Content="Series"/>
-                <CheckBox IsChecked="{Binding IsParallelMode}" Content="Parallel"/>
+            <!-- Channel Controls -->
+            <StackPanel Grid.Row="1" Orientation="Vertical" Margin="0 10 0 0">
+                <StackPanel Orientation="Horizontal">
+                    <Button Content="Add to Group" Command="{Binding AddChannelToGroupCommand}"
+                            ToolTip="Add selected channels to current group"/>
+                    <Button Content="Remove from Group" Command="{Binding RemoveChannelFromGroupCommand}"
+                            ToolTip="Remove selected channels from current group"/>
+                    <Button Content="Toggle Power" Command="{Binding ToggleSelectedChannelsCommand}"
+                            ToolTip="Toggle power for selected channels"/>
+                </StackPanel>
 
+                <StackPanel Orientation="Horizontal" Margin="0 10 0 0">
+                    <CheckBox Content="Series Mode" IsChecked="{Binding IsSeriesMode}" Margin="5"/>
+                    <CheckBox Content="Parallel Mode" IsChecked="{Binding IsParallelMode}" Margin="5"/>
+                </StackPanel>
+
+                <Grid Margin="0 10 0 0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="Voltage:" VerticalAlignment="Center" Margin="5"/>
+                    <xctk:DoubleUpDown Grid.Column="1" 
+                                       Value="{Binding SelectedChannels[0].Vset, UpdateSourceTrigger=PropertyChanged}"
+                                       Maximum="35" Minimum="0" Increment="0.01"/>
+                    <Button Grid.Column="2" Content="Apply" 
+                            Command="{Binding SetVoltageForSelectedCommand}"
+                            CommandParameter="{Binding SelectedChannels[0].Vset}"
+                            Margin="5 0 0 0"/>
+                </Grid>
+
+                <Grid Margin="0 5 0 0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="Current:" VerticalAlignment="Center" Margin="5"/>
+                    <xctk:DoubleUpDown Grid.Column="1" 
+                                       Value="{Binding SelectedChannels[0].Iset, UpdateSourceTrigger=PropertyChanged}"
+                                       Maximum="3" Minimum="0" Increment="0.01"/>
+                    <Button Grid.Column="2" Content="Apply" 
+                            Command="{Binding SetCurrentForSelectedCommand}"
+                            CommandParameter="{Binding SelectedChannels[0].Iset}"
+                            Margin="5 0 0 0"/>
+                    
+
+                </Grid>
+                
+                <Grid Margin="0 5 0 0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="Cut off Voltage:" VerticalAlignment="Center" Margin="5"/>
+                    <xctk:DoubleUpDown Grid.Column="1" 
+                                       Value="{Binding SelectedChannels[0].GroupVoltageLimit, UpdateSourceTrigger=PropertyChanged}"
+                                       Maximum="34" Minimum="0" Increment="0.01"/>
+                    <Button Grid.Column="2" Content="Apply" 
+                            Command="{Binding SetGroupVoltageLimitCommand}"
+                            CommandParameter="{Binding SelectedChannels[0].GroupVoltageLimit}"
+                            Margin="5 0 0 0"/>
+
+
+                </Grid>
+                
+                <Grid Margin="0 5 0 0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+
+                    <TextBlock Text="Cut off Current:" VerticalAlignment="Center" Margin="5"/>
+                    <xctk:DoubleUpDown Grid.Column="1" 
+                                       Value="{Binding SelectedChannels[0].GroupCurrentLimit, UpdateSourceTrigger=PropertyChanged}"
+                                       Maximum="30" Minimum="0" Increment="0.01"/>
+                    <Button Grid.Column="2" Content="Apply" 
+                            Command="{Binding SetGroupCurrentLimitCommand}"
+                            CommandParameter="{Binding SelectedChannels[0].GroupCurrentLimit}"
+                            Margin="5 0 0 0"/>
+                </Grid>
+                
+
+
+
+                <StackPanel Orientation="Horizontal" Margin="0 10 0 0" HorizontalAlignment="Center">
+                    <Button Content="CC Mode" Command="{Binding SetCCLoadModeCommand}"
+                            Style="{StaticResource CCButtonStyle}" Width="80"/>
+                    <Button Content="CV Mode" Command="{Binding SetCVLoadModeCommand}"
+                            Style="{StaticResource CVButtonStyle}" Width="80"/>
+                    <Button Content="CR Mode" Command="{Binding SetCRLoadModeCommand}"
+                            Style="{StaticResource CRButtonStyle}" Width="80"/>
+                </StackPanel>
             </StackPanel>
-
-
-            <Button Content="Включить/Выключить" 
-                    Command="{Binding ToggleSelectedChannelsCommand}"/>
-
-            <StackPanel Orientation="Horizontal" Margin="5">
-                <xctk:DoubleUpDown Value="{Binding SelectedChannels[0].Vset, UpdateSourceTrigger=PropertyChanged}"
-                                                       VerticalAlignment="Center"
-                                                       HorizontalAlignment="Left"
-                                                       Width="150"
-                                                       Margin="5"
-                                                       Background="#FF3F3F3F"
-                                                       Foreground="#FFFFFFFF"
-                                                       BorderBrush="#FF575757" 
-                                                       Maximum="35" 
-                                                       Minimum="0" 
-                                                       Increment="0.01"/>
-                <Button Content="Применить напряжение" 
-                    Command="{Binding SetVoltageForSelectedCommand}"
-                    CommandParameter="{Binding SelectedChannels[0].Vset}"/>
-
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="5">
-                <xctk:DoubleUpDown Value="{Binding SelectedChannels[0].Iset, UpdateSourceTrigger=PropertyChanged}"
-                                                       VerticalAlignment="Center"
-                                                       HorizontalAlignment="Left"
-                                                       Width="150"
-                                                       Margin="5"
-                                                       Background="#FF3F3F3F"
-                                                       Foreground="#FFFFFFFF"
-                                                       BorderBrush="#FF575757" 
-                                                       Maximum="3" 
-                                                       Minimum="0" 
-                                                       Increment="0.01"/>
-                <Button Content="Применить ток" 
-                    Command="{Binding SetCurrentForSelectedCommand}"
-                    CommandParameter="{Binding SelectedChannels[0].Iset}"/>
-            </StackPanel>
-            <StackPanel Orientation="Horizontal" Margin="10">
-                <Button Content="CC Load mod" 
-                    Command="{Binding SetCCLoadModeCommand}"
-                        Margin="5 0" Padding="5"
-                        Style="{StaticResource CCButtonStyle}"/>
-                <Button Content="CV Load mod" 
-                    Command="{Binding SetCVLoadModeCommand}"
-                        Margin="5 0" Padding="5"
-                        Style="{StaticResource CVButtonStyle}"/>
-                <Button Content="CR Load mod" 
-                    Command="{Binding SetCRLoadModeCommand}"
-                        Margin="5 0" Padding="5"
-                        Style="{StaticResource CRButtonStyle}"/>
-            </StackPanel>
-        </StackPanel>
+        </Grid>
     </Grid>
 </UserControl>

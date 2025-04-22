@@ -295,6 +295,8 @@ namespace GWInstekPSUManager.ViewModels
                 var addedChannel = initializedChannel.newChannel;
                 await addedChannel.ChangeLoadModeAsync(initializedChannel.LoadState);
                 Channels.Add((PowerSupplyChannel)addedChannel);
+
+                Channels.Last().DeviceName = DeviceName;
             }
             catch (Exception ex)
             {

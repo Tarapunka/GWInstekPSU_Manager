@@ -125,6 +125,7 @@ public class PowerSupplyLogger : IDisposable
 
                 var timestamp = DateTime.Now.ToString("o");
                 var line = $"{timestamp}," +
+                          $"{_channel.DeviceName}," +
                           $"{_channel.ChannelNumber}," +
                           $"{_channel.Voltage.ToString(CultureInfo.InvariantCulture)}," +
                           $"{_channel.Current.ToString(CultureInfo.InvariantCulture)}," +

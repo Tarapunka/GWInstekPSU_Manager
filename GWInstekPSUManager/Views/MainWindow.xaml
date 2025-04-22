@@ -3,85 +3,115 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:local="clr-namespace:GWInstekPSUManager.Views"
         xmlns:vm="clr-namespace:GWInstekPSUManager.ViewModels"
-        Title="GW Instek Manager" Height="600" Width="800">
+        Title="GW Instek Manager" 
+        MinHeight="600" MinWidth="900"
+        Height="700" Width="1100"
+        WindowStartupLocation="CenterScreen">
+
+    <Window.Resources>
+        <Style TargetType="TabItem">
+            <Setter Property="Padding" Value="10 5"/>
+            <Setter Property="FontSize" Value="14"/>
+        </Style>
+
+        <Style TargetType="GroupBox">
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="Padding" Value="5"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="BorderBrush" Value="#DDD"/>
+        </Style>
+
+        <Style TargetType="Button">
+            <Setter Property="Margin" Value="5 2"/>
+            <Setter Property="Padding" Value="8 3"/>
+            <Setter Property="MinWidth" Value="80"/>
+        </Style>
+    </Window.Resources>
+
     <Grid>
-        <TabControl>
-            <!-- Первая вкладка - оригинальный интерфейс -->
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TabControl Grid.Row="0">
+            <!-- Device Management Tab -->
             <TabItem Header="Device Management">
                 <Grid>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="280"/>
+                        <ColumnDefinition Width="300" MinWidth="250"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- Основная рабочая область -->
-                    <Grid Grid.Column="0">
+                    <!-- Main Content Area -->
+                    <Grid Grid.Column="0" Margin="5">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
-                        <!-- Панель настроек подключения -->
-                        <Border Grid.Row="0" Background="#EEE" Padding="10" Margin="5"
+                        <!-- Connection Panel -->
+                        <Border Grid.Row="0" Background="#F5F5F5" Padding="10" 
                                 BorderBrush="LightGray" BorderThickness="0,0,0,1">
                             <StackPanel>
-                                <TextBlock Text="{Binding StatusMessage}"/>
-                                <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="{Binding StatusMessage}" Margin="0 0 0 5"/>
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                     <ComboBox ItemsSource="{Binding AvailablePorts}"
-                                          SelectedItem="{Binding SelectedPort}"
-                                          Width="250" Margin="5" >
+                                              SelectedItem="{Binding SelectedPort}"
+                                              Width="250" Margin="0 0 10 0">
                                         <ComboBox.ItemTemplate>
                                             <DataTemplate>
                                                 <StackPanel>
                                                     <TextBlock Text="{Binding PortName}" FontWeight="Bold"/>
-                                                    <TextBlock Text="{Binding Description}" FontStyle="Italic" FontSize="10"/>
+                                                    <TextBlock Text="{Binding Description}" 
+                                                               FontStyle="Italic" FontSize="10"/>
                                                 </StackPanel>
                                             </DataTemplate>
                                         </ComboBox.ItemTemplate>
                                     </ComboBox>
-                                    <ComboBox Width="80" Margin="0,0,10,0"
-                                         ItemsSource="{Binding AvailableBaudRates}"
-                                         SelectedItem="{Binding BaudRate}"/>
-                                    <Button Content="Connect" Command="{Binding ConnectCommand}"
-                                        Padding="10,3" MinWidth="80"/>
-                                    <Button Content="Disconnect" Command="{Binding DisconnectCommand}"
-                                        Padding="10,3" MinWidth="80" Margin="10,0,0,0"/>
+
+                                    <ComboBox Width="100" Margin="0 0 10 0"
+                                              ItemsSource="{Binding AvailableBaudRates}"
+                                              SelectedItem="{Binding BaudRate}"/>
+
+                                    <Button Content="Connect" Command="{Binding ConnectCommand}"/>
+                                    <Button Content="Disconnect" Command="{Binding DisconnectCommand}"/>
                                 </StackPanel>
                             </StackPanel>
                         </Border>
 
-                        <!-- Область работы с устройством -->
-                        <local:DeviceView Grid.Row="1" DataContext="{Binding SelectedDeviceViewModel}"
-                                          Margin="5"/>
+                        <!-- Device Work Area -->
+                        <local:DeviceView Grid.Row="1" 
+                                          DataContext="{Binding SelectedDeviceViewModel}"/>
                     </Grid>
 
-                    <!-- Список подключенных устройств справа -->
-                    <Border Grid.Column="1" Background="#F5F5F5" BorderBrush="LightGray" BorderThickness="1,0,0,0">
+                    <!-- Connected Devices List -->
+                    <Border Grid.Column="1" Background="#F5F5F5" BorderBrush="LightGray" 
+                            BorderThickness="1,0,0,0">
                         <DockPanel>
-                            <TextBlock DockPanel.Dock="Top" Text="{Binding StatusMessage}" FontWeight="Bold"
-                                   Padding="10,5" Background="#DDD"/>
+                            <TextBlock DockPanel.Dock="Top" Text="Connected Devices" 
+                                       FontWeight="Bold" Padding="10,5" Background="#DDD"/>
                             <ListView ItemsSource="{Binding DeviceViewModels}"
                                       SelectedItem="{Binding SelectedDeviceViewModel}"
                                       ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                                 <ListView.ItemTemplate>
                                     <DataTemplate>
-                                        <StackPanel Orientation="Horizontal">
-                                            <Border Padding="5" Margin="2" Background="White" CornerRadius="3">
-                                                <StackPanel>
-                                                    <TextBlock Text="{Binding DeviceName}" TextWrapping="Wrap"/>
-                                                    <TextBlock Text="{Binding DeviceService.Connection.ConnectionName, 
-                                                        StringFormat='Connected to {0}'}"/>
+                                        <Border Padding="5" Margin="2" Background="White" CornerRadius="3">
+                                            <DockPanel>
+                                                <StackPanel DockPanel.Dock="Left">
+                                                    <TextBlock Text="{Binding DeviceName}" FontWeight="Bold"/>
+                                                    <TextBlock Text="{Binding DeviceService.Connection.ConnectionName}" 
+                                                               FontSize="11" Foreground="#555"/>
                                                 </StackPanel>
-                                            </Border>
-                                            <Button Content="Disconnect"
-                                                    Command="{Binding DataContext.DisconnectCommand,
-                                                RelativeSource={RelativeSource AncestorType=ListView}}"
-                                                    CommandParameter="{Binding}" Margin="2" Padding="2"/>
-                                            <Button Content="Remove" 
-                                                    Command="{Binding DataContext.RemoveDeviceCommand,
-                                                RelativeSource={RelativeSource AncestorType=ListView}}"
-                                                    CommandParameter="{Binding}" Margin="2" Padding="2"/>
-                                        </StackPanel>
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                                                    <Button Content="✕" Padding="3" Margin="2 0 0 0"
+                                                            Command="{Binding DataContext.RemoveDeviceCommand,
+                                                                    RelativeSource={RelativeSource AncestorType=ListView}}"
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip="Remove device"/>
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Border>
                                     </DataTemplate>
                                 </ListView.ItemTemplate>
                             </ListView>
@@ -90,10 +120,17 @@
                 </Grid>
             </TabItem>
 
-            <!-- Вторая вкладка - ChannelManagerView -->
+            <!-- Channel Management Tab -->
             <TabItem Header="Channel Management">
                 <local:ChannelManagerView DataContext="{Binding ChannelManager}"/>
             </TabItem>
         </TabControl>
+
+        <!-- Status Bar -->
+        <StatusBar Grid.Row="1" Background="#EEE">
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusMessage}"/>
+            </StatusBarItem>
+        </StatusBar>
     </Grid>
 </Window>

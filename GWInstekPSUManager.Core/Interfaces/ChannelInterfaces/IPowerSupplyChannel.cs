@@ -6,6 +6,7 @@ namespace GWInstekPSUManager.Core.Interfaces.ChannelInterfaces;
 
 public interface IPowerSupplyChannel : INotifyPropertyChanged, INotifyCollectionChanged, IDisposable
 {
+    string DeviceName { get; set; }
     int ChannelNumber { get; set; }
     double Voltage { get; set; }
     double Current { get; set; }
@@ -18,6 +19,12 @@ public interface IPowerSupplyChannel : INotifyPropertyChanged, INotifyCollection
 
     double CurrentLimit { get; set; }
     double VoltageLimit { get; set; }
+
+    double GroupActualVoltage  { get; set; }
+    double GroupActualCurrent  { get; set; }
+    double GroupVoltageLimit { get; set; }
+    double GroupCurrentLimit { get; set; }
+
     string Mode { get; set; }
     DateTime StartTime { get; }
     TimeSpan ElapsedTime { get; }

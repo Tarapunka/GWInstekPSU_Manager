@@ -203,6 +203,23 @@ namespace GWInstekPSUManager.ViewModels
             }
         }
 
+        [RelayCommand]
+        private async Task SetGroupCurrentLimit(double current)
+        {
+            foreach(var channel in SelectedChannels.ToList())
+            {
+                 await Task.Run(()=>channel.GroupCurrentLimit = current);
+            }
+        }
+        [RelayCommand]
+        private async Task SetGroupVoltageLimit(double voltage)
+        {
+            foreach (var channel in SelectedChannels.ToList())
+            {
+                await Task.Run(() => channel.GroupVoltageLimit = voltage);
+            }
+        }
+
 
 
     }
