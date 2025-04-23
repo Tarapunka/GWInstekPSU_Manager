@@ -113,7 +113,7 @@
                     <TextBlock Text="Current:" VerticalAlignment="Center" Margin="5"/>
                     <xctk:DoubleUpDown Grid.Column="1" 
                                        Value="{Binding SelectedChannels[0].Iset, UpdateSourceTrigger=PropertyChanged}"
-                                       Maximum="3" Minimum="0" Increment="0.01"/>
+                                       Maximum="20" Minimum="0" Increment="0.01"/>
                     <Button Grid.Column="2" Content="Apply" 
                             Command="{Binding SetCurrentForSelectedCommand}"
                             CommandParameter="{Binding SelectedChannels[0].Iset}"
