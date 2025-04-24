@@ -44,4 +44,5 @@ public interface IPowerSupplyChannel : INotifyPropertyChanged, INotifyCollection
     Task LoadFromFileAsync(string filePath);
     Task CalibrateAsync();
     Task ResetAsync();
+    IChannelCapacityCalculator CapacityCalculator { get; set; }
 }

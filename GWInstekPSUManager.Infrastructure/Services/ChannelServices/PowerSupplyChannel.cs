@@ -302,6 +302,7 @@ public partial class PowerSupplyChannel : IPowerSupplyChannel
             OnPropertyChanged(nameof(IsSelected));
         }
     }
+    public IChannelCapacityCalculator CapacityCalculator { get; set; }
 
 
 

@@ -2,168 +2,258 @@
 using System.ComponentModel;
 using System.Globalization;
 using System.IO;
+using System.Linq;
+using System.Text;
 using System.Diagnostics;
 using GWInstekPSUManager.Core.Interfaces.ChannelInterfaces;
 
-namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices;
-
-public class PowerSupplyLogger : IDisposable
+namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
 {
-    private readonly IPowerSupplyChannel _channel;
-    private StreamWriter _writer;
-    private bool _disposed;
-    private readonly object _lock = new();
-    private string _currentLogFilePath;
-    private bool _isLogging;
-    private DateTime? _startTime;
-    private readonly string _logsDirectory;
-
-    public PowerSupplyLogger(IPowerSupplyChannel channel)
+    public class PowerSupplyLogger : IDisposable
     {
-        _channel = channel ?? throw new ArgumentNullException(nameof(channel));
-        _logsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ChannelLogs");
-        Directory.CreateDirectory(_logsDirectory); // Создаем папку при инициализации
+        private readonly IPowerSupplyChannel _channel;
+        private readonly Func<int, IPowerSupplyChannel> _getChannelFunc;
+        private StreamWriter _writer;
+        private bool _disposed;
+        private readonly object _lock = new();
+        private string _currentLogFilePath;
+        private DateTime? _testStartTime;
+        private readonly string _logsDirectory;
 
-        _channel.PropertyChanged += OnPropertyChanged;
-
-        // Начинаем запись сразу при создании логгера, если канал включен
-        if (_channel.IsEnabled)
+        public PowerSupplyLogger(IPowerSupplyChannel channel, Func<int, IPowerSupplyChannel> getChannelFunc = null)
         {
-            StartNewLog();
-        }
-    }
+            _channel = channel ?? throw new ArgumentNullException(nameof(channel));
+            _getChannelFunc = getChannelFunc;
 
-    public void StartNewLog()
-    {
-        lock (_lock)
-        {
-            if (_isLogging)
+            _logsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ChannelLogs");
+            Directory.CreateDirectory(_logsDirectory);
+
+            _channel.PropertyChanged += OnPropertyChanged;
+
+            // Сразу создаем лог если канал включен
+            if (_channel.IsEnabled)
             {
-                StopLog(); // Останавливаем текущую запись перед началом новой
+                CreateNewLogFile();
             }
+        }
 
-            // Генерируем уникальное имя файла
-            _currentLogFilePath = Path.Combine(
-                _logsDirectory,
-                $"Channel_{_channel.ChannelNumber}_{DateTime.Now:yyyyMMdd_HHmmssfff}.csv");
+        private void CreateNewLogFile()
+        {
+            lock (_lock)
+            {
+                // Закрываем предыдущий лог если был
+                if (_writer != null)
+                {
+                    _writer.Flush();
+                    _writer.Dispose();
+                    _writer = null;
+                }
+
+                // Создаем новый файл с уникальным именем
+                _currentLogFilePath = Path.Combine(
+                    _logsDirectory,
+                    $"{_channel.DeviceName}_Channel_{_channel.ChannelNumber}_{DateTime.Now:yyyyMMdd_HHmmssfff}.csv");
+
+                _writer = new StreamWriter(_currentLogFilePath, false, Encoding.UTF8);
+                _testStartTime = DateTime.Now;
+
+                WriteHeader();
+                LogCurrentState(); // Записываем начальное состояние
+            }
+        }
+
+        private IPowerSupplyChannel[] GetGroupChannels()
+        {
+            if (!(_channel.IsSeriesOn || _channel.IsParallelOn) || _getChannelFunc == null)
+                return Array.Empty<IPowerSupplyChannel>();
 
             try
             {
-                _writer = new StreamWriter(_currentLogFilePath);
-                WriteHeader();
-                _startTime = DateTime.Now;
-                _isLogging = true;
-
-                // Записываем текущее состояние сразу после создания файла
-                LogCurrentState();
+                return Enumerable.Range(1, 4) // Предполагаем 4 канала
+                    .Select(chNum => _getChannelFunc(chNum))
+                    .Where(ch => ch != null &&
+                               ch.IsSeriesOn == _channel.IsSeriesOn &&
+                               ch.IsParallelOn == _channel.IsParallelOn &&
+                               ch.ChannelNumber != _channel.ChannelNumber) // Исключаем текущий канал
+                    .OrderBy(ch => ch.ChannelNumber)
+                    .ToArray();
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"Failed to start new log: {ex.Message}");
-                _writer?.Dispose();
-                _writer = null;
-                _isLogging = false;
+                Debug.WriteLine($"Error getting group channels: {ex.Message}");
+                return Array.Empty<IPowerSupplyChannel>();
             }
         }
-    }
 
-    public void StopLog()
-    {
-        lock (_lock)
+        private void WriteHeader()
         {
-            if (!_isLogging) return;
+            var header = new StringBuilder("DeviceName;ChannelNumber;");
 
-            _writer?.Flush();
-            _writer?.Dispose();
-            _writer = null;
-
-            // Сбрасываем время начала записи
-            _startTime = null;
-
-            _isLogging = false;
-        }
-    }
-
-    private void WriteHeader()
-    {
-        var header = "Timestamp,ChannelNumber,Voltage(V),Current(A),Power(W),Capacity(Ah)," +
-                    "CurrentLimit(A),VoltageLimit(V),Mode,StartTime,ElapsedTime,IsEnabled,IsCalibrated";
-        _writer.WriteLine(header);
-        _writer.Flush();
-    }
-
-    private void OnPropertyChanged(object sender, PropertyChangedEventArgs e)
-    {
-        if (e.PropertyName == nameof(IPowerSupplyChannel.IsEnabled))
-        {
-            if (_channel.IsEnabled)
+            if (_channel.IsSeriesOn || _channel.IsParallelOn)
             {
-                StartNewLog();
+                var groupChannels = GetGroupChannels();
+
+                // Напряжение
+                header.Append($"Channel{_channel.ChannelNumber}Voltage;");
+                foreach (var ch in groupChannels)
+                {
+                    header.Append($"Channel{ch.ChannelNumber}Voltage;");
+                }
+                header.Append("TotalVoltage;");
+
+                // Ток
+                header.Append($"Channel{_channel.ChannelNumber}Current;");
+                foreach (var ch in groupChannels)
+                {
+                    header.Append($"Channel{ch.ChannelNumber}Current;");
+                }
+                header.Append("TotalCurrent;");
+
+                // Мощность
+                header.Append($"Channel{_channel.ChannelNumber}Power;");
+                foreach (var ch in groupChannels)
+                {
+                    header.Append($"Channel{ch.ChannelNumber}Power;");
+                }
+                header.Append("TotalPower;");
+
+                // Ёмкость
+                header.Append($"Channel{_channel.ChannelNumber}Capacity;");
+                foreach (var ch in groupChannels)
+                {
+                    header.Append($"Channel{ch.ChannelNumber}Capacity;");
+                }
+                header.Append("TotalCapacity;");
             }
             else
             {
-                StopLog();
+                header.Append("Voltage;Current;Power;Capacity;");
             }
+
+            header.Append("CurrentTime;TestTimeSec");
+            _writer.WriteLine(header.ToString());
+            _writer.Flush();
         }
 
-        if (_isLogging && _writer != null)
+        public void LogCurrentState()
         {
-            LogCurrentState();
-        }
-    }
-
-    public void LogCurrentState()
-    {
-        lock (_lock)
-        {
-            if (!_isLogging || _writer == null || !_startTime.HasValue) return;
-
-            try
+            lock (_lock)
             {
-                // Рассчитываем прошедшее время с момента включения канала
-                var elapsedTime = DateTime.Now - _startTime.Value;
+                if (_writer == null || !_channel.IsEnabled) return;
 
-                var timestamp = DateTime.Now.ToString("o");
-                var line = $"{timestamp}," +
-                          $"{_channel.DeviceName}," +
-                          $"{_channel.ChannelNumber}," +
-                          $"{_channel.Voltage.ToString(CultureInfo.InvariantCulture)}," +
-                          $"{_channel.Current.ToString(CultureInfo.InvariantCulture)}," +
-                          $"{_channel.Power.ToString(CultureInfo.InvariantCulture)}," +
-                          $"{_channel.Capacity.ToString(CultureInfo.InvariantCulture)}," +
-                          $"{_channel.CurrentLimit.ToString(CultureInfo.InvariantCulture)}," +
-                          $"{_channel.VoltageLimit.ToString(CultureInfo.InvariantCulture)}," +
-                          $"{EscapeCsv(_channel.Mode)}," +
-                          $"{_startTime.Value.ToString("o")}," + // Время начала записи
-                          $"{elapsedTime.TotalSeconds}," +      // Прошедшее время в секундах
-                          $"{_channel.IsEnabled}," +
-                          $"{_channel.IsCalibrated}";
+                try
+                {
+                    var currentTime = DateTime.Now;
+                    var testTime = currentTime - _testStartTime.Value;
+                    var line = new StringBuilder();
 
-                _writer.WriteLine(line);
-                _writer.Flush();
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"Error logging data: {ex.Message}");
+                    line.Append($"{EscapeCsv(_channel.DeviceName)};{_channel.ChannelNumber};");
+
+                    if (_channel.IsSeriesOn || _channel.IsParallelOn)
+                    {
+                        var groupChannels = GetGroupChannels();
+                        double totalVoltage = _channel.Voltage;
+                        double totalCurrent = _channel.Current;
+                        double totalCapacity = _channel.Capacity;
+
+                        // Текущий канал
+                        line.Append($"{_channel.Voltage.ToString(CultureInfo.InvariantCulture)};");
+
+                        // Остальные каналы в группе
+                        foreach (var ch in groupChannels)
+                        {
+                            line.Append($"{ch.Voltage.ToString(CultureInfo.InvariantCulture)};");
+                            totalVoltage += ch.Voltage;
+                        }
+                        line.Append($"{totalVoltage.ToString(CultureInfo.InvariantCulture)};");
+
+                        // Ток - аналогично
+                        line.Append($"{_channel.Current.ToString(CultureInfo.InvariantCulture)};");
+                        foreach (var ch in groupChannels)
+                        {
+                            line.Append($"{ch.Current.ToString(CultureInfo.InvariantCulture)};");
+                            totalCurrent += ch.Current;
+                        }
+                        line.Append($"{totalCurrent.ToString(CultureInfo.InvariantCulture)};");
+
+                        // Мощность
+                        line.Append($"{(_channel.Voltage * _channel.Current).ToString(CultureInfo.InvariantCulture)};");
+                        foreach (var ch in groupChannels)
+                        {
+                            line.Append($"{(ch.Voltage * ch.Current).ToString(CultureInfo.InvariantCulture)};");
+                        }
+                        line.Append($"{(totalVoltage * totalCurrent).ToString(CultureInfo.InvariantCulture)};");
+
+                        // Ёмкость
+                        line.Append($"{_channel.Capacity.ToString(CultureInfo.InvariantCulture)};");
+                        foreach (var ch in groupChannels)
+                        {
+                            line.Append($"{ch.Capacity.ToString(CultureInfo.InvariantCulture)};");
+                            totalCapacity += ch.Capacity;
+                        }
+                        line.Append($"{totalCapacity.ToString(CultureInfo.InvariantCulture)};");
+                    }
+                    else
+                    {
+                        // Одиночный режим
+                        line.Append($"{_channel.Voltage.ToString(CultureInfo.InvariantCulture)};");
+                        line.Append($"{_channel.Current.ToString(CultureInfo.InvariantCulture)};");
+                        line.Append($"{(_channel.Voltage * _channel.Current).ToString(CultureInfo.InvariantCulture)};");
+                        line.Append($"{_channel.Capacity.ToString(CultureInfo.InvariantCulture)};");
+                    }
+
+                    line.Append($"{currentTime:o};{testTime.TotalSeconds.ToString(CultureInfo.InvariantCulture)}");
+                    _writer.WriteLine(line.ToString());
+                    _writer.Flush();
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"Error logging data: {ex.Message}");
+                }
             }
         }
-    }
-
-    private static string EscapeCsv(string input)
-    {
-        if (string.IsNullOrEmpty(input)) return string.Empty;
-        return input.Contains(",") ? $"\"{input}\"" : input;
-    }
-
-    public void Dispose()
-    {
-        lock (_lock)
+        private void OnPropertyChanged(object sender, PropertyChangedEventArgs e)
         {
-            if (_disposed) return;
+            if (e.PropertyName == nameof(IPowerSupplyChannel.IsEnabled))
+            {
+                if (_channel.IsEnabled)
+                {
+                    // Канал включен - создаем новый файл
+                    CreateNewLogFile();
+                }
+                else
+                {
+                    // Канал выключен - закрываем файл
+                    lock (_lock)
+                    {
+                        _writer?.Flush();
+                        _writer?.Dispose();
+                        _writer = null;
+                    }
+                }
+            }
 
-            _channel.PropertyChanged -= OnPropertyChanged;
-            StopLog();
-            _disposed = true;
+            // Логируем изменения состояния
+            if (_channel.IsEnabled && _writer != null)
+            {
+                LogCurrentState();
+            }
+        }
+
+        private static string EscapeCsv(string input) =>
+            string.IsNullOrEmpty(input) ? string.Empty :
+            input.Contains(";") ? $"\"{input}\"" : input;
+
+        public void Dispose()
+        {
+            lock (_lock)
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _channel.PropertyChanged -= OnPropertyChanged;
+                _writer?.Flush();
+                _writer?.Dispose();
+            }
         }
     }
 }

@@ -1,35 +1,26 @@
-﻿namespace GWInstekPSUManager.Core.Models;
+﻿using GWInstekPSUManager.Core.Interfaces.ChannelInterfaces;
 
-public class ChannelCapacityCalculator
+namespace GWInstekPSUManager.Core.Models;
+
+public class ChannelCapacityCalculator : IChannelCapacityCalculator
 {
-    private DateTime _lastMeasurementTime;
-    private double _accumulatedCapacityAh;
-    private bool _firstMeasurement = true;
+    private DateTime? _lastMeasurementTime;
+    private double _accumulatedCapacity;
 
-    public double CalculateCapacity(double currentA, DateTime currentTime)
+    public double CalculateCapacity(double current, DateTime measurementTime)
     {
-        if (_firstMeasurement)
+        if (_lastMeasurementTime.HasValue)
         {
-            _lastMeasurementTime = currentTime;
-            _firstMeasurement = false;
-            return 0;
+            var timeSpan = measurementTime - _lastMeasurementTime.Value;
+            _accumulatedCapacity += current * timeSpan.TotalHours;
         }
-
-        // Вычисляем время прошедшее с последнего измерения в часах
-        double elapsedHours = (currentTime - _lastMeasurementTime).TotalHours;
-        _lastMeasurementTime = currentTime;
-
-        // Интегрируем ток по времени (Ah = A * h)
-        if (currentA > 0.01) // Учитываем только токи > 1 мА
-        {
-            _accumulatedCapacityAh += currentA * elapsedHours;
-        }
-        return _accumulatedCapacityAh;
+        _lastMeasurementTime = measurementTime;
+        return _accumulatedCapacity;
     }
 
     public void Reset()
     {
-        _accumulatedCapacityAh = 0;
-        _firstMeasurement = true;
+        _accumulatedCapacity = 0;
+        _lastMeasurementTime = null;
     }
 }

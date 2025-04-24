@@ -28,8 +28,19 @@ namespace GWInstekPSUManager.ViewModels
         [ObservableProperty]
         private bool _isSeriesMode = false;
 
-        [ObservableProperty]
         private bool _isParallelMode = false;
+
+        public bool IsParallelMode
+        {
+            get => _isParallelMode;
+            set
+            {
+                _isParallelMode = value;
+                foreach(var channel in SelectedChannels)
+                    channel.ChangeLoadMode("PAR",value);
+                OnPropertyChanged(nameof(IsParallelMode));
+            }
+        }
 
 
 

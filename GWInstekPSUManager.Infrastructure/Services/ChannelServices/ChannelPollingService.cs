@@ -1,23 +1,25 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
-using System.Security.AccessControl;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using GWInstekPSUManager.Core.Events;
 using GWInstekPSUManager.Core.Interfaces.ChannelInterfaces;
 using GWInstekPSUManager.Core.Interfaces.DeviceInterfaces;
 using GWInstekPSUManager.Core.Models;
+using GWInstekPSUManager.Infrastructure.Services.ChannelServices.LoggerServices;
 
 namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
 {
     public class ChannelPollingService : IChannelPollingService, IDisposable
     {
         private readonly IDeviceService _deviceService;
-        private readonly ConcurrentDictionary<int, ChannelPollingContext> _activePolls = new();
-        private readonly object _syncRoot = new();
-        private readonly PowerSupplyLoggerFactory _loggerFactory;
+        private readonly ConcurrentDictionary<int, ChannelContext> _activeChannels = new();
+        private readonly GroupChannelLogger _groupLogger = new();
+        private bool _disposed;
 
         public event EventHandler<ChannelMeasurementEventArgs> MeasurementReceived;
         public event Action<int> ChannelLimitExceeded;
@@ -25,270 +27,200 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
         public ChannelPollingService(IDeviceService deviceService)
         {
             _deviceService = deviceService ?? throw new ArgumentNullException(nameof(deviceService));
-            _loggerFactory = new PowerSupplyLoggerFactory();
         }
 
         public async Task StartPollingAsync(int channelNumber, IPowerSupplyChannel channel)
         {
+            if (_disposed) throw new ObjectDisposedException(GetType().Name);
             await StopPollingAsync(channelNumber).ConfigureAwait(false);
 
-            var context = new ChannelPollingContext
-            {
-                Channel = channel,
-                Cts = new CancellationTokenSource(),
-                Logger = _loggerFactory.GetOrCreateLogger(channel),
-                CapacityCalculator = new ChannelCapacityCalculator()
-            };
+            var context = new ChannelContext(
+                channel,
+                new CancellationTokenSource(),
+                new SingleChannelLogger(channelNumber, channel.DeviceName));
 
-            _activePolls[channelNumber] = context;
+            if (!_activeChannels.TryAdd(channelNumber, context))
+            {
+                context.Dispose();
+                throw new InvalidOperationException($"Polling for channel {channelNumber} is already running");
+            }
+
+            if (channel.IsSeriesOn || channel.IsParallelOn)
+            {
+                _groupLogger.AddChannel(channelNumber, channel);
+            }
 
             _ = Task.Run(() => PollChannelAsync(channelNumber, context), context.Cts.Token);
         }
 
-        private async Task PollChannelAsync(int channelNumber, ChannelPollingContext context)
+        private async Task PollChannelAsync(int channelNumber, ChannelContext context)
         {
             try
             {
-                var token = context.Cts.Token;
-                var channel = context.Channel;
-
-                while (!token.IsCancellationRequested)
+                while (!context.Cts.IsCancellationRequested)
                 {
                     var sw = Stopwatch.StartNew();
-                    var measurementTime = DateTime.Now;
+                    var measurement = await _deviceService.GetMeasureChannelAsync(channelNumber);
+                    sw.Stop();
 
-                    // Для связанных каналов - групповой опрос
-                    if (channel.IsSeriesOn || channel.IsParallelOn)
-                    {
-                        await PollLinkedChannelsGroup(channelNumber, measurementTime, token);
-                    }
-                    else
-                    {
-                        await PollSingleChannel(channelNumber, context, sw, measurementTime, token);
-                    }
-
-                    await Task.Delay(GetPollingInterval(channel), token);
+                    ProcessMeasurement(channelNumber, context, measurement, sw.Elapsed);
+                    await Task.Delay(500, context.Cts.Token);
                 }
             }
-            catch (OperationCanceledException) { }
+            catch (OperationCanceledException)
+            {
+                // Нормальное завершение
+            }
             catch (Exception ex)
             {
                 Debug.WriteLine($"Polling error for channel {channelNumber}: {ex.Message}");
-            }
-            finally
-            {
-                _activePolls.TryRemove(channelNumber, out _);
-                context.Cts.Dispose();
+                HandlePollingTaskFault(channelNumber);
             }
         }
 
-        private async Task PollLinkedChannelsGroup(int masterChannelNumber, DateTime measurementTime, CancellationToken token)
+        private void ProcessMeasurement(int channelNumber, ChannelContext context,
+        MeasureResponse measurement, TimeSpan elapsed)
         {
-            var masterContext = _activePolls[masterChannelNumber];
-            var masterChannel = masterContext.Channel;
-
-            var groupChannels = _activePolls
-                .Where(x => x.Value.Channel.IsSeriesOn == masterChannel.IsSeriesOn &&
-                           x.Value.Channel.IsParallelOn == masterChannel.IsParallelOn)
-                .ToList();
-
-            var measurements = new ConcurrentDictionary<int, MeasureResponse>();
-            await Task.WhenAll(groupChannels.Select(async channel =>
+            lock (context.Channel)
             {
-                if (token.IsCancellationRequested)
-                    return;
+                context.Channel.Voltage = measurement.Voltage;
+                context.Channel.Current = measurement.Current;
+                context.Channel.Power = measurement.Voltage * measurement.Current;
 
-                var response = await _deviceService.GetMeasureChannelAsync(channel.Key);
-                if (!token.IsCancellationRequested)
+                if (context.Channel.IsEnabled && context.Channel.CapacityCalculator != null)
                 {
-                    measurements[channel.Key] = response;
-                }
-            }));
-
-            // Рассчитываем суммарные значения для группы
-            double totalCurrent = 0;
-            double totalVoltage = 0;
-            foreach (var channel in groupChannels)
-            {
-                if (measurements.TryGetValue(channel.Key, out var channelMeasurements))
-                {
-                    totalCurrent += channelMeasurements.Current;
-                    totalVoltage += channelMeasurements.Voltage;
-                }
-            }
-
-            // Обрабатываем каждый канал с учетом суммарных значений
-            foreach (var channel in groupChannels)
-            {
-                if (token.IsCancellationRequested)
-                    break;
-
-                if (measurements.TryGetValue(channel.Key, out var channelMeasurements))
-                {
-                    // Передаем суммарные значения в контекст канала
-                    channel.Value.Channel.GroupActualCurrent = totalCurrent;
-                    channel.Value.Channel.GroupActualVoltage = totalVoltage;
-
-                    ProcessChannelMeasurements(
-                        channel.Key,
-                        channel.Value.Channel,
-                        channelMeasurements,
-                        channel.Value.Logger,
-                        channel.Value.CapacityCalculator,
-                        measurementTime);
-
-                    if (IsGroupLimitExceeded(channel.Value.Channel))
-                    {
-                        ChannelLimitExceeded?.Invoke(channel.Key);
-                    }
-                }
-            }
-        }
-        private async Task PollSingleChannel(int channelNumber, ChannelPollingContext context,
-                                          Stopwatch sw, DateTime measurementTime, CancellationToken token)
-        {
-            var measurements = await _deviceService.GetMeasureChannelAsync(channelNumber);
-            if (!token.IsCancellationRequested)
-            {
-                sw.Stop();
-                ProcessChannelMeasurements(
-                    channelNumber,
-                    context.Channel,
-                    measurements,
-                    context.Logger,
-                    context.CapacityCalculator,
-                    measurementTime,
-                    sw.Elapsed);
-            }
-        }
-
-        private void ProcessChannelMeasurements(
-            int channelNumber,
-            IPowerSupplyChannel channel,
-            MeasureResponse measurements,
-            PowerSupplyLogger logger,
-            ChannelCapacityCalculator capacityCalculator,
-            DateTime measurementTime,
-            TimeSpan? elapsedTime = null)
-        {
-            lock (_syncRoot)
-            {
-                channel.Voltage = measurements.Voltage;
-                channel.Current = measurements.Current;
-                channel.Power = measurements.Voltage * measurements.Current;
-
-                if (channel.IsEnabled)
-                {
-                    channel.Capacity = capacityCalculator.CalculateCapacity(measurements.Current, measurementTime);
+                    context.Channel.Capacity = context.Channel.CapacityCalculator.CalculateCapacity(
+                        measurement.Current, DateTime.Now);
                 }
 
-                // Для группового режима используем новую проверку
-                if ((channel.IsSeriesOn || channel.IsParallelOn) && IsGroupLimitExceeded(channel))
+                // Логирование
+                context.Logger.LogMeasurement(context.Channel, measurement, elapsed);
+
+                if (context.Channel.IsSeriesOn || context.Channel.IsParallelOn)
                 {
-                    ChannelLimitExceeded?.Invoke(channelNumber);
-                    return;
+                    _groupLogger.LogMeasurement(context.Channel, measurement, elapsed);
                 }
-                // Для одиночного режима - старую проверку
-                else if (!channel.IsSeriesOn && !channel.IsParallelOn && IsLimitExceeded(channel, measurements))
+
+                // Проверка лимитов
+                if (CheckLimits(context.Channel, measurement))
                 {
                     ChannelLimitExceeded?.Invoke(channelNumber);
                     return;
                 }
 
-                logger.LogCurrentState();
+                // Отправка события
                 MeasurementReceived?.Invoke(this, new ChannelMeasurementEventArgs(
                     channelNumber,
-                    measurements,
-                    elapsedTime ?? TimeSpan.Zero,
-                    channel.Capacity));
+                    measurement,
+                    elapsed,
+                    context.Channel.Capacity));
             }
         }
 
-        private int GetPollingInterval(IPowerSupplyChannel channel)
+        private bool CheckLimits(IPowerSupplyChannel channel, MeasureResponse measurements)
         {
-            // Можно настроить разные интервалы для разных режимов
-            return 500; // стандартный интервал
+            if (channel.IsSeriesOn)
+                return channel.GroupVoltageLimit > 0 && channel.GroupActualVoltage >= channel.GroupVoltageLimit;
+
+            if (channel.IsParallelOn)
+                return channel.GroupCurrentLimit > 0 && channel.GroupActualCurrent >= channel.GroupCurrentLimit;
+
+            return (channel.VoltageLimit > 0 && measurements.Voltage >= channel.VoltageLimit) ||
+                   (channel.CurrentLimit > 0 && measurements.Current >= channel.CurrentLimit);
         }
 
         public async Task StopPollingAsync(int channelNumber)
         {
-            if (_activePolls.TryRemove(channelNumber, out var context))
+            if (_disposed) throw new ObjectDisposedException(GetType().Name);
+            if (_activeChannels.TryRemove(channelNumber, out var context))
             {
-                context.Cts.Cancel();
-                try { await Task.Delay(100); } catch { }
-                context.Cts.Dispose();
+                try
+                {
+                    context.Cts.Cancel();
+                    await Task.Delay(100, context.Cts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) { }
+                finally
+                {
+                    context.Dispose();
+                    _groupLogger.RemoveChannel(channelNumber);
+                }
             }
         }
 
         public void ResetCapacityCounter(int channelNumber)
         {
-            lock (_syncRoot)
+            if (_disposed) throw new ObjectDisposedException(GetType().Name);
+            if (_activeChannels.TryGetValue(channelNumber, out var context))
             {
-                if (_activePolls.TryGetValue(channelNumber, out var context))
+                lock (context.Channel)
                 {
                     context.Channel.Capacity = 0;
-                    context.CapacityCalculator.Reset();
+                    context.Channel.CapacityCalculator?.Reset();
                 }
             }
         }
 
+        private void HandlePollingTaskFault(int channelNumber)
+        {
+            if (_activeChannels.TryRemove(channelNumber, out var context))
+            {
+                context.Dispose();
+                _groupLogger.RemoveChannel(channelNumber);
+            }
+        }
+
         public void Dispose()
         {
-            foreach (var channel in _activePolls.Keys.ToArray())
-            {
-                StopPollingAsync(channel).Wait();
-            }
-            _loggerFactory.Dispose();
-        }
+            if (_disposed) return;
+            _disposed = true;
 
-        private bool IsLimitExceeded(IPowerSupplyChannel channel, MeasureResponse measurements)
-        {
-            return (channel.VoltageLimit > 0 && measurements.Voltage >= channel.VoltageLimit) ||
-                   (channel.CurrentLimit > 0 && measurements.Current >= channel.CurrentLimit);
-        }
-
-        private bool IsGroupLimitExceeded(IPowerSupplyChannel channel)
-        {
-            // Для последовательного соединения проверяем напряжение
-            if (channel.IsSeriesOn && channel.GroupVoltageLimit > 0)
+            foreach (var channelNumber in _activeChannels.Keys.ToArray())
             {
-                return channel.GroupActualVoltage >= channel.GroupVoltageLimit;
+                StopPollingAsync(channelNumber).Wait();
             }
 
-            // Для параллельного соединения проверяем ток
-            if (channel.IsParallelOn && channel.GroupCurrentLimit > 0)
-            {
-                return channel.GroupActualCurrent >= channel.GroupCurrentLimit;
-            }
-
-            return false;
-        }
-
-        private class ChannelPollingContext
-        {
-            public IPowerSupplyChannel Channel { get; set; }
-            public CancellationTokenSource Cts { get; set; }
-            public PowerSupplyLogger Logger { get; set; }
-            public ChannelCapacityCalculator CapacityCalculator { get; set; }
+            _groupLogger.Dispose();
         }
     }
 
-    public class PowerSupplyLoggerFactory : IDisposable
+
+    public class SingleChannelLogger : IDisposable
     {
-        private readonly ConcurrentDictionary<int, PowerSupplyLogger> _loggers = new();
+        private readonly StreamWriter _writer;
+        private readonly string _logFilePath;
 
-        public PowerSupplyLogger GetOrCreateLogger(IPowerSupplyChannel channel)
+        public SingleChannelLogger(int channelNumber, string deviceName)
         {
-            return _loggers.GetOrAdd(channel.ChannelNumber, _ => new PowerSupplyLogger(channel));
+            var logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+            Directory.CreateDirectory(logsDir);
+            _logFilePath = Path.Combine(logsDir, $"{deviceName}_Ch{channelNumber}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            _writer = new StreamWriter(_logFilePath, false, Encoding.UTF8);
+            _writer.WriteLine("Timestamp;Voltage;Current;Power;Capacity;ElapsedMs");
+            _writer.Flush();
+        }
+
+        public void LogMeasurement(IPowerSupplyChannel channel, MeasureResponse measurement, TimeSpan elapsed)
+        {
+            try
+            {
+                var line = $"{DateTime.Now:O};{measurement.Voltage};{measurement.Current};" +
+                          $"{measurement.Voltage * measurement.Current};{channel.Capacity};" +
+                          $"{elapsed.TotalMilliseconds}";
+
+                _writer.WriteLine(line);
+                _writer.Flush();
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"Error logging measurement: {ex.Message}");
+            }
         }
 
         public void Dispose()
         {
-            foreach (var logger in _loggers.Values)
-            {
-                logger.Dispose();
-            }
-            _loggers.Clear();
+            _writer?.Flush();
+            _writer?.Dispose();
         }
-    }
+    }    
 }

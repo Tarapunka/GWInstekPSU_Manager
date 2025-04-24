@@ -9,6 +9,7 @@ using GWInstekPSUManager.Infrastructure.Services.ChannelServices;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO.Ports;
+using System.Threading.Channels;
 using System.Windows;
 
 namespace GWInstekPSUManager.ViewModels
@@ -57,6 +58,12 @@ namespace GWInstekPSUManager.ViewModels
         private async Task TurnChannelAsync()
         {
             if (SelectedChannel == null) return;
+            if (SelectedChannel.IsParallelOn || SelectedChannel.IsSeriesOn)
+            {
+                await TurnDualChannelAsync();
+                return;
+            }
+
             await TurnChannelAsync(SelectedChannel.ChannelNumber);
         }
 
@@ -64,12 +71,6 @@ namespace GWInstekPSUManager.ViewModels
         {
             var channel = Channels.FirstOrDefault(c => c.ChannelNumber == channelNumber);
             if (channel == null) return;
-
-            if (channel.IsParallelOn || channel.IsSeriesOn)
-            {
-                await TurnDualChannelAsync();
-                return;
-            }
 
             bool newState = await _deviceManager.TurnChannelAsync(channelNumber);
             channel.IsEnabled = newState;
