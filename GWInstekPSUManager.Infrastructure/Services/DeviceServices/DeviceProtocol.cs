@@ -307,7 +307,12 @@ public class DeviceProtocol : IDeviceProtocol, IDisposable
                     Power = ParseDoubleValueResponse(responseArray[2]),
                 };
             }
-
+            return new MeasureResponse
+            {
+                Voltage = 0,
+                Current = 0,
+                Power = 0,
+            };
         }
         catch
         {
