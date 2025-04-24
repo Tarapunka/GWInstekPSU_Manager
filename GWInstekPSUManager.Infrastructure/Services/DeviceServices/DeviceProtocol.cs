@@ -295,17 +295,30 @@ public class DeviceProtocol : IDeviceProtocol, IDisposable
     /// </summary>
     public MeasureResponse ParseMeasureResponse(string response)
     {
-        var responseArray = response.Split(",");
-        if (responseArray.Length == 3)
+        try
+        {
+            var responseArray = response.Split(",");
+            if (responseArray.Length == 3)
+            {
+                return new MeasureResponse
+                {
+                    Voltage = ParseDoubleValueResponse(responseArray[0]),
+                    Current = ParseDoubleValueResponse(responseArray[1]),
+                    Power = ParseDoubleValueResponse(responseArray[2]),
+                };
+            }
+
+        }
+        catch
         {
             return new MeasureResponse
             {
-                Voltage = ParseDoubleValueResponse(responseArray[0]),
-                Current = ParseDoubleValueResponse(responseArray[1]),
-                Power = ParseDoubleValueResponse(responseArray[2]),
+                Voltage = 0,
+                Current = 0,
+                Power = 0,
             };
+            throw new FormatException($"Invalid Measure response format: {response}");
         }
-        throw new FormatException($"Invalid Measure response format: {response}");
     }
 
     /// <summary>
