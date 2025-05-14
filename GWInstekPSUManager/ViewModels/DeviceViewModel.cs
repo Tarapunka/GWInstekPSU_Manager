@@ -77,16 +77,31 @@ namespace GWInstekPSUManager.ViewModels
 
             if (newState)
             {
-                _channelPollingService.ChannelLimitExceeded += async (num) =>
-                {
-                    await _deviceManager.TurnChannelAsync(num);
-                    channel.IsEnabled = false;
-                };
+                // Удаляем старый обработчик (если был) и добавляем новый
+                _channelPollingService.ChannelLimitExceeded -= HandleChannelLimitExceeded;
+                _channelPollingService.ChannelLimitExceeded += HandleChannelLimitExceeded;
+
                 await _channelPollingService.StartPollingAsync(channelNumber, channel);
             }
             else
             {
                 await _channelPollingService.StopPollingAsync(channelNumber);
+            }
+        }
+
+        private async void HandleChannelLimitExceeded(int channelNumber)
+        {
+            var channel = Channels.FirstOrDefault(c => c.ChannelNumber == channelNumber);
+            if (channel != null)
+            {
+                await _deviceManager.TurnChannelAsync(channelNumber);
+                channel.IsEnabled = false;
+                await _channelPollingService.StopPollingAsync(channelNumber);
+
+                // Отписываемся после срабатывания
+                _channelPollingService.ChannelLimitExceeded -= HandleChannelLimitExceeded;
+
+                StatusMessage = $"Channel {channelNumber} disabled - limit exceeded";
             }
         }
 

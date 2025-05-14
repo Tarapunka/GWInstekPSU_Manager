@@ -1,11 +1,6 @@
-﻿using System;
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
 using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using GWInstekPSUManager.Core.Events;
 using GWInstekPSUManager.Core.Interfaces.ChannelInterfaces;
 using GWInstekPSUManager.Core.Interfaces.DeviceInterfaces;
@@ -32,7 +27,17 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
         public async Task StartPollingAsync(int channelNumber, IPowerSupplyChannel channel)
         {
             if (_disposed) throw new ObjectDisposedException(GetType().Name);
+
             await StopPollingAsync(channelNumber).ConfigureAwait(false);
+
+            // Даём время на корректное завершение
+            await Task.Delay(100);
+
+            // Только если канал был выключен – сбрасываем счётчик ёмкости
+            if (!channel.IsEnabled && channel.CapacityCalculator != null)
+            {
+                channel.CapacityCalculator.Reset();
+            }
 
             var context = new ChannelContext(
                 channel,
@@ -64,7 +69,7 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
                     sw.Stop();
 
                     ProcessMeasurement(channelNumber, context, measurement, sw.Elapsed);
-                    await Task.Delay(500, context.Cts.Token);
+                    await Task.Delay(1000, context.Cts.Token);
                 }
             }
             catch (OperationCanceledException)
@@ -81,17 +86,21 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
         private void ProcessMeasurement(int channelNumber, ChannelContext context,
         MeasureResponse measurement, TimeSpan elapsed)
         {
+            context.Channel.Voltage = measurement.Voltage;
+            context.Channel.Current = measurement.Current;
+            context.Channel.Power = measurement.Power;
+
+            if (/*context.Channel.IsEnabled &&*/ context.Channel.CapacityCalculator != null)
+            {
+                context.Channel.Capacity = context.Channel.CapacityCalculator.CalculateCapacity(
+                    measurement.Current, DateTime.Now);
+            }
+
+            bool limitsExceeded;
+
             lock (context.Channel)
             {
-                context.Channel.Voltage = measurement.Voltage;
-                context.Channel.Current = measurement.Current;
-                context.Channel.Power = measurement.Voltage * measurement.Current;
-
-                if (context.Channel.IsEnabled && context.Channel.CapacityCalculator != null)
-                {
-                    context.Channel.Capacity = context.Channel.CapacityCalculator.CalculateCapacity(
-                        measurement.Current, DateTime.Now);
-                }
+                limitsExceeded = CheckLimits(context.Channel, measurement);
 
                 // Логирование
                 context.Logger.LogMeasurement(context.Channel, measurement, elapsed);
@@ -101,20 +110,20 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
                     _groupLogger.LogMeasurement(context.Channel, measurement, elapsed);
                 }
 
-                // Проверка лимитов
-                if (CheckLimits(context.Channel, measurement))
-                {
-                    ChannelLimitExceeded?.Invoke(channelNumber);
-                    return;
-                }
-
-                // Отправка события
-                MeasurementReceived?.Invoke(this, new ChannelMeasurementEventArgs(
-                    channelNumber,
-                    measurement,
-                    elapsed,
-                    context.Channel.Capacity));
             }
+
+            // Проверка лимитов
+            if (CheckLimits(context.Channel, measurement))
+            {
+                ChannelLimitExceeded?.Invoke(channelNumber);
+            }
+
+            // Отправка события
+            MeasurementReceived?.Invoke(this, new ChannelMeasurementEventArgs(
+                channelNumber,
+                measurement,
+                elapsed,
+                context.Channel.Capacity));
         }
 
         private bool CheckLimits(IPowerSupplyChannel channel, MeasureResponse measurements)
@@ -125,8 +134,8 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
             if (channel.IsParallelOn)
                 return channel.GroupCurrentLimit > 0 && channel.GroupActualCurrent >= channel.GroupCurrentLimit;
 
-            return (channel.VoltageLimit > 0 && measurements.Voltage >= channel.VoltageLimit) ||
-                   (channel.CurrentLimit > 0 && measurements.Current >= channel.CurrentLimit);
+            return (measurements.Voltage <= channel.VoltageLimit) ||
+                   (measurements.Current <= channel.CurrentLimit);
         }
 
         public async Task StopPollingAsync(int channelNumber)
@@ -185,28 +194,37 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
     }
 
 
-    public class SingleChannelLogger : IDisposable
+    public class SingleChannelLogger : IMeasurementLogger
     {
-        private readonly StreamWriter _writer;
+        private StreamWriter _writer;
         private readonly string _logFilePath;
+        private DateTime _startTime;
 
         public SingleChannelLogger(int channelNumber, string deviceName)
         {
-            var logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
+            var logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ChannelLogs");
             Directory.CreateDirectory(logsDir);
             _logFilePath = Path.Combine(logsDir, $"{deviceName}_Ch{channelNumber}_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+            StartNewLog();
+        }
+
+        public void StartNewLog()
+        {
+            _writer?.Dispose();
             _writer = new StreamWriter(_logFilePath, false, Encoding.UTF8);
-            _writer.WriteLine("Timestamp;Voltage;Current;Power;Capacity;ElapsedMs");
-            _writer.Flush();
+            _writer.WriteLine("Timestamp;Voltage;Current;Power;Capacity;TestTime");
+            _startTime = DateTime.Now;
         }
 
         public void LogMeasurement(IPowerSupplyChannel channel, MeasureResponse measurement, TimeSpan elapsed)
         {
             try
             {
+                var testTime = DateTime.Now - _startTime;
                 var line = $"{DateTime.Now:O};{measurement.Voltage};{measurement.Current};" +
                           $"{measurement.Voltage * measurement.Current};{channel.Capacity};" +
-                          $"{elapsed.TotalMilliseconds}";
+                          // Форматирование времени как 00:00:00
+                          $"{(int)testTime.TotalHours:D2}:{testTime.Minutes:D2}:{testTime.Seconds:D2}";
 
                 _writer.WriteLine(line);
                 _writer.Flush();
@@ -216,11 +234,10 @@ namespace GWInstekPSUManager.Infrastructure.Services.ChannelServices
                 Debug.WriteLine($"Error logging measurement: {ex.Message}");
             }
         }
-
         public void Dispose()
         {
             _writer?.Flush();
             _writer?.Dispose();
         }
-    }    
+    }
 }

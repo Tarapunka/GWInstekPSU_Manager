@@ -167,6 +167,8 @@ public class SerialPortService : ISerialPortService
 
     private void OnDataReceivedFromSerialPort(object sender, SerialDataReceivedEventArgs e)
     {
+        
+
         //try
         //{
         //    var serialPort = sender as SerialPort;
